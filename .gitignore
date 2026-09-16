@@ -7,6 +7,7 @@ __pycache__/
 build/
 dist/
 *.spec.bak
+*.zip
 
 # User data and templates (confidential / local)
 templates/
