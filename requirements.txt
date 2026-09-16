@@ -1,0 +1,7 @@
+pandas>=2.0.0
+openpyxl>=3.1.0
+docxtpl>=0.16.0
+docx2pdf>=0.1.8
+tkcalendar==1.6.1
+customtkinter==6.0.0
+pywin32>=306
