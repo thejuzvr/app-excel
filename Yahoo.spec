@@ -3,6 +3,9 @@ import os
 import shutil
 from PyInstaller.utils.hooks import collect_all
 
+if not os.path.exists('templates'):
+    os.makedirs('templates', exist_ok=True)
+
 datas = [('templates', 'templates'), ('assets', 'assets')]
 binaries = []
 hiddenimports = ['babel.numbers']

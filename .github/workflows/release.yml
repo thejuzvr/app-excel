@@ -31,7 +31,8 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller Yahoo.spec
+          New-Item -ItemType Directory -Force -Path templates
+          pyinstaller -y Yahoo.spec
 
       - name: Archive build artifacts
         run: |
