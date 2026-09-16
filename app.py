@@ -9,7 +9,7 @@ from tkinter import filedialog, messagebox, ttk
 from tkcalendar import DateEntry
 
 from config import TEMPLATES_DIR, RESULT_DIR, ASSETS_DIR, APP_VERSION, UPDATE_CHECK_ON_STARTUP
-from generator import get_template_files, load_excel, generate_documents, sanitize_filename
+from generator import get_template_files, load_excel, generate_documents, sanitize_filename, format_fill_date
 from updater import check_for_updates, download_update, apply_update_and_restart
 
 # ==========================================
@@ -28,16 +28,18 @@ def load_settings():
     return {}
 
 def save_settings():
-    """Сохраняет текущие параметры (папку, формат, тему) в JSON"""
+    """Сохраняет текущие параметры (папку, формат, тему, стиль даты) в JSON"""
     try:
         out_folder = entry_output_path.get().strip() if 'entry_output_path' in globals() else RESULT_DIR
         out_format = output_format_var.get() if 'output_format_var' in globals() else 'word'
         app_mode = ctk.get_appearance_mode().lower()
+        date_fmt = date_format_var.get() if 'date_format_var' in globals() else '29.07.2026 (Числовой)'
         
         data = {
             'output_folder': out_folder,
             'output_format': out_format,
-            'appearance_mode': app_mode
+            'appearance_mode': app_mode,
+            'date_format_style': date_fmt
         }
         with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
@@ -353,7 +355,15 @@ def generate_docs_gui():
             messagebox.showerror("Ошибка", f"Не удалось создать целевую папку:\n{e}")
             return
     
-    fill_date = date_picker.get()
+    raw_date = date_picker.get()
+    chosen_style = date_format_var.get() if 'date_format_var' in globals() else 'numeric'
+    if "Прописью" in chosen_style:
+        style_key = "text"
+    elif "Официальный" in chosen_style:
+        style_key = "quotes"
+    else:
+        style_key = "numeric"
+    fill_date = format_fill_date(raw_date, style_key)
     output_format = output_format_var.get()
     
     people_count = len(selected_items)
@@ -792,11 +802,11 @@ lbl_file_info.pack(side="left")
 
 # Блок выбора даты
 p_date_frame = ctk.CTkFrame(params_card, fg_color="transparent")
-p_date_frame.pack(side="left", padx=15, pady=10)
+p_date_frame.pack(side="left", padx=12, pady=10)
 
 ctk.CTkLabel(
     p_date_frame,
-    text="📅 Дата заполнения:",
+    text="📅 Дата:",
     font=ctk.CTkFont(weight="bold", size=12)
 ).pack(side="left", padx=(0, 6))
 
@@ -812,7 +822,30 @@ date_picker = DateEntry(
     font=('Segoe UI', 10)
 )
 date_picker.set_date(today)
-date_picker.pack(side="left")
+date_picker.pack(side="left", padx=(0, 6))
+
+DATE_STYLE_OPTIONS = [
+    "29.07.2026 (Числовой)",
+    "29 июля 2026 г. (Прописью)",
+    "«29» июля 2026 г. (Официальный)"
+]
+
+saved_date_style = saved_user_settings.get('date_format_style', DATE_STYLE_OPTIONS[0])
+if saved_date_style not in DATE_STYLE_OPTIONS:
+    saved_date_style = DATE_STYLE_OPTIONS[0]
+
+date_format_var = ctk.StringVar(value=saved_date_style)
+
+date_format_menu = ctk.CTkOptionMenu(
+    p_date_frame,
+    values=DATE_STYLE_OPTIONS,
+    variable=date_format_var,
+    command=lambda _: save_settings(),
+    width=195,
+    height=36,
+    font=ctk.CTkFont(size=11)
+)
+date_format_menu.pack(side="left")
 
 # Блок папки сохранения
 p_output_frame = ctk.CTkFrame(params_card, fg_color="transparent")

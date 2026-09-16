@@ -63,6 +63,51 @@ def format_date(value):
     return val_str
 
 
+MONTHS_RU = {
+    1: 'января', 2: 'февраля', 3: 'марта', 4: 'апреля',
+    5: 'мая', 6: 'июня', 7: 'июля', 8: 'августа',
+    9: 'сентября', 10: 'октября', 11: 'ноября', 12: 'декабря'
+}
+
+
+def format_fill_date(date_val, style="numeric"):
+    """
+    Форматирует дату заполнения в выбранный стиль:
+    - 'numeric': 29.07.2026
+    - 'text': 29 июля 2026 г.
+    - 'quotes': «29» июля 2026 г.
+    """
+    if not date_val:
+        return ""
+    
+    dt = None
+    if isinstance(date_val, (datetime, pd.Timestamp)):
+        dt = date_val
+    elif isinstance(date_val, str):
+        date_str = date_val.strip()
+        for fmt in ('%d.%m.%Y', '%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+            try:
+                dt = datetime.strptime(date_str, fmt)
+                break
+            except ValueError:
+                pass
+    
+    if not dt:
+        return str(date_val)
+    
+    day = dt.day
+    day_str = f"{day:02d}"
+    month_name = MONTHS_RU.get(dt.month, '')
+    year = dt.year
+    
+    if style == "text":
+        return f"{day} {month_name} {year} г."
+    elif style == "quotes":
+        return f"«{day_str}» {month_name} {year} г."
+    else:
+        return dt.strftime('%d.%m.%Y')
+
+
 def format_context(row, fill_date=""):
     """
     Формирует словарь-контекст для шаблона.
@@ -105,9 +150,13 @@ def format_context(row, fill_date=""):
             elif 'полис' in var_lower:
                 context[var_name.replace('полис', 'полюс').replace('Полис', 'Полюс')] = formatted_val
     
-    # Добавляем дату заполнения из интерфейса (тег {{дата}})
+    # Добавляем дату заполнения из интерфейса (теги {{дата}}, {{дата_заполнения}} и вариации)
     context['дата'] = fill_date
     context['Дата'] = fill_date
+    context['ДАТА'] = fill_date
+    context['дата_заполнения'] = fill_date
+    context['Дата_заполнения'] = fill_date
+    context['ДАТА_ЗАПОЛНЕНИЯ'] = fill_date
     
     # Должность: {{Должность}}, {{ДОЛЖНОСТЬ}}, {{должность}}
     dolg = ''

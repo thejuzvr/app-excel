@@ -23,7 +23,7 @@ CLEAN_TEMP_FILES = True           # Удалять временные .docx по
 
 # Информация о приложении и автообновлении
 APP_NAME = "Yahoo"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 GITHUB_REPO = "thejuzvr/app-excel"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 UPDATE_CHECK_ON_STARTUP = True
