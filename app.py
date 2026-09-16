@@ -683,11 +683,11 @@ def check_updates_gui(manual=True):
                     if manual:
                         messagebox.showwarning(
                             "Проверка обновлений",
-                            res.get("error", "Не удалось связаться с сервером GitHub.")
+                            res.get("error", "Не удалось связаться с сервером обновлений.")
                         )
                 else:
                     if manual:
-                        msg = res.get("message") or f"У вас установлена самая актуальная версия (v{APP_VERSION})."
+                        msg = res.get("message") or f"У вас установлена последняя версия (v{APP_VERSION})."
                         messagebox.showinfo("Обновления", msg)
 
         root.after(0, on_complete)

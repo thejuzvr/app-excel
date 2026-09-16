@@ -112,32 +112,32 @@ def check_for_updates(
             
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            # Релизов в репозитории пока нет
+            # Релизов в репозитории пока нет — у пользователя актуальная версия
             return {
                 "success": True,
                 "has_update": False,
                 "current_version": current_version,
                 "latest_version": current_version,
-                "message": "Релизы на GitHub пока не опубликованы."
+                "message": f"У вас установлена последняя версия (v{current_version})."
             }
         elif e.code == 403:
             return {
                 "success": False,
                 "has_update": False,
-                "error": "Превышен лимит запросов к GitHub API. Попробуйте позже."
+                "error": "Слишком много запросов к серверу обновлений. Попробуйте позже."
             }
         else:
             return {
                 "success": False,
                 "has_update": False,
-                "error": f"Ошибка сервера GitHub (код {e.code})"
+                "error": f"Ошибка сервера обновлений (код {e.code})"
             }
             
     except urllib.error.URLError as e:
         return {
             "success": False,
             "has_update": False,
-            "error": f"Нет подключения к интернету или GitHub недоступен."
+            "error": "Не удалось проверить обновления. Проверьте подключение к интернету."
         }
     except Exception as e:
         logger.exception("Ошибка при проверке обновлений")
