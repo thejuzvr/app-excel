@@ -2,13 +2,15 @@ import os
 import json
 import threading
 import datetime
+import tempfile
 import pandas as pd
 import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk
 from tkcalendar import DateEntry
 
-from config import TEMPLATES_DIR, RESULT_DIR, ASSETS_DIR
+from config import TEMPLATES_DIR, RESULT_DIR, ASSETS_DIR, APP_VERSION, UPDATE_CHECK_ON_STARTUP
 from generator import get_template_files, load_excel, generate_documents, sanitize_filename
+from updater import check_for_updates, download_update, apply_update_and_restart
 
 # ==========================================
 # СОХРАНЕНИЕ И ЗАГРУЗКА НАСТРОЕК (SETTINGS)
@@ -480,6 +482,219 @@ if os.path.exists(icon_path):
 
 apply_treeview_theme("dark")
 
+# ==========================================
+# ДИАЛОГ И ЛОГИКА АВТООБНОВЛЕНИЯ (UPDATER)
+# ==========================================
+latest_update_info = None
+
+def show_update_dialog(update_info, parent=None):
+    """Модальное окно с описанием новой версии, прогрессом загрузки и установкой"""
+    dialog = ctk.CTkToplevel(parent or root)
+    dialog.title("🔄 Обновление программы")
+    dialog.geometry("520x460")
+    dialog.resizable(False, False)
+    dialog.transient(parent or root)
+    dialog.grab_set()
+
+    # Центрирование относительно родительского окна
+    try:
+        p_x = (parent or root).winfo_x()
+        p_y = (parent or root).winfo_y()
+        p_w = (parent or root).winfo_width()
+        p_h = (parent or root).winfo_height()
+        d_x = p_x + (p_w - 520) // 2
+        d_y = p_y + (p_h - 460) // 2
+        dialog.geometry(f"520x460+{max(0, d_x)}+{max(0, d_y)}")
+    except Exception:
+        pass
+
+    icon_p = os.path.join(ASSETS_DIR, 'ico.ico')
+    if os.path.exists(icon_p):
+        try:
+            dialog.iconbitmap(icon_p)
+        except Exception:
+            pass
+
+    header_box = ctk.CTkFrame(dialog, fg_color="transparent")
+    header_box.pack(fill="x", padx=20, pady=(16, 8))
+
+    lbl_new_ver = ctk.CTkLabel(
+        header_box,
+        text=f"🎉 Доступна новая версия {update_info.get('tag_name', '')}!",
+        font=ctk.CTkFont(size=17, weight="bold"),
+        text_color="#2ecc71"
+    )
+    lbl_new_ver.pack(anchor="w")
+
+    lbl_curr_ver = ctk.CTkLabel(
+        header_box,
+        text=f"Текущая версия: v{APP_VERSION}  •  Новая: {update_info.get('tag_name', '')}",
+        font=ctk.CTkFont(size=12),
+        text_color="gray"
+    )
+    lbl_curr_ver.pack(anchor="w", pady=(2, 0))
+
+    ctk.CTkLabel(
+        dialog,
+        text="📋 Что нового:",
+        font=ctk.CTkFont(size=13, weight="bold")
+    ).pack(anchor="w", padx=20, pady=(6, 4))
+
+    txt_changelog = ctk.CTkTextbox(dialog, height=140, corner_radius=8, font=ctk.CTkFont(size=12))
+    txt_changelog.pack(fill="x", padx=20, pady=(0, 10))
+    raw_body = update_info.get('changelog') or 'Описание изменений отсутствует.'
+    txt_changelog.insert("1.0", raw_body.strip())
+    txt_changelog.configure(state="disabled")
+
+    progress_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+    progress_frame.pack(fill="x", padx=20, pady=(0, 10))
+
+    lbl_prog_status = ctk.CTkLabel(
+        progress_frame,
+        text="Готово к загрузке",
+        font=ctk.CTkFont(size=12),
+        text_color="gray",
+        anchor="w"
+    )
+    lbl_prog_status.pack(fill="x", pady=(0, 4))
+
+    update_pbar = ctk.CTkProgressBar(progress_frame, height=12)
+    update_pbar.pack(fill="x")
+    update_pbar.set(0)
+
+    btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+    btn_frame.pack(fill="x", padx=20, pady=(8, 16))
+
+    is_downloading = [False]
+    is_cancelled = [False]
+
+    def on_cancel():
+        if is_downloading[0]:
+            is_cancelled[0] = True
+            lbl_prog_status.configure(text="Отмена скачивания...", text_color="#e74c3c")
+        dialog.destroy()
+
+    dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+
+    def start_download():
+        download_url = update_info.get('download_url')
+        if not download_url:
+            messagebox.showerror("Ошибка", "Ссылка на файл обновления не найдена.", parent=dialog)
+            return
+
+        is_downloading[0] = True
+        btn_update_action.configure(state="disabled")
+        btn_close.configure(text="Отмена")
+        lbl_prog_status.configure(text="Подключение к серверу...", text_color="#3498db")
+
+        def download_worker():
+            asset_name = update_info.get('asset_name') or 'update.zip'
+            dest_file = os.path.join(tempfile.gettempdir(), asset_name)
+
+            def progress_hook(downloaded, total, speed_str):
+                if is_cancelled[0]:
+                    return
+                pct = downloaded / total if total > 0 else 0
+                mb_down = downloaded / (1024 * 1024)
+                mb_total = total / (1024 * 1024)
+                dialog.after(0, lambda: update_pbar.set(pct))
+                dialog.after(0, lambda: lbl_prog_status.configure(
+                    text=f"Загрузка: {mb_down:.1f} / {mb_total:.1f} МБ ({int(pct * 100)}%) • {speed_str}",
+                    text_color="#3498db"
+                ))
+
+            try:
+                success = download_update(
+                    download_url,
+                    dest_file,
+                    progress_callback=progress_hook,
+                    cancel_flag=lambda: is_cancelled[0]
+                )
+                if not success or is_cancelled[0]:
+                    return
+
+                dialog.after(0, lambda: lbl_prog_status.configure(
+                    text="Обновление скачано! Перезапуск программы...",
+                    text_color="#27ae60"
+                ))
+                dialog.after(1000, lambda: apply_update_and_restart(dest_file))
+
+            except Exception as e:
+                is_downloading[0] = False
+                dialog.after(0, lambda: btn_update_action.configure(state="normal"))
+                dialog.after(0, lambda: lbl_prog_status.configure(
+                    text=f"Ошибка: {e}",
+                    text_color="#e74c3c"
+                ))
+
+        threading.Thread(target=download_worker, daemon=True).start()
+
+    btn_update_action = ctk.CTkButton(
+        btn_frame,
+        text="⬇️ Скачать и установить",
+        command=start_download,
+        height=38,
+        font=ctk.CTkFont(size=13, weight="bold"),
+        fg_color="#27ae60",
+        hover_color="#219150"
+    )
+    btn_update_action.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+    btn_close = ctk.CTkButton(
+        btn_frame,
+        text="Закрыть",
+        command=on_cancel,
+        width=100,
+        height=38,
+        fg_color=("#94a3b8", "#34495e"),
+        hover_color=("#64748b", "#2c3e50")
+    )
+    btn_close.pack(side="right")
+
+
+def check_updates_gui(manual=True):
+    """Запуск проверки обновлений (ручной или фоновый при старте)"""
+    global latest_update_info
+
+    if manual and 'btn_update' in globals():
+        btn_update.configure(text="⏳ Проверка...", state="disabled")
+
+    def worker():
+        res = check_for_updates()
+
+        def on_complete():
+            global latest_update_info
+            if 'btn_update' in globals():
+                if manual:
+                    btn_update.configure(text="🔄 Обновления", state="normal")
+
+                if res.get("has_update"):
+                    latest_update_info = res
+                    tag = res.get("tag_name", "")
+                    btn_update.configure(
+                        text=f"🚀 Доступно {tag}",
+                        fg_color="#e67e22",
+                        hover_color="#d35400",
+                        text_color="#ffffff",
+                        state="normal"
+                    )
+                    show_update_dialog(res, root)
+                elif not res.get("success"):
+                    if manual:
+                        messagebox.showwarning(
+                            "Проверка обновлений",
+                            res.get("error", "Не удалось связаться с сервером GitHub.")
+                        )
+                else:
+                    if manual:
+                        msg = res.get("message") or f"У вас установлена самая актуальная версия (v{APP_VERSION})."
+                        messagebox.showinfo("Обновления", msg)
+
+        root.after(0, on_complete)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 # ----------------------------------------------------
 # 1. ШАПКА (HEADER)
 # ----------------------------------------------------
@@ -508,6 +723,15 @@ lbl_badge = ctk.CTkLabel(
 )
 lbl_badge.pack(side="left")
 
+lbl_version = ctk.CTkLabel(
+    header_left,
+    text=f"v{APP_VERSION}",
+    font=ctk.CTkFont(size=11),
+    text_color="gray",
+    padx=8
+)
+lbl_version.pack(side="left")
+
 header_right = ctk.CTkFrame(header_card, fg_color="transparent")
 header_right.pack(side="right", padx=14, pady=10)
 
@@ -522,6 +746,20 @@ btn_theme = ctk.CTkButton(
     text_color=("#0f172a", "#f1f2f6")
 )
 btn_theme.pack(side="right")
+
+btn_update = ctk.CTkButton(
+    header_right,
+    text="🔄 Обновления",
+    width=125,
+    height=32,
+    command=lambda: check_updates_gui(manual=True),
+    fg_color=("#cbd5e1", "#2d3436"),
+    hover_color=("#94a3b8", "#3d4852"),
+    text_color=("#0f172a", "#f1f2f6"),
+    font=ctk.CTkFont(size=11, weight="bold")
+)
+btn_update.pack(side="right", padx=(0, 8))
+
 
 
 # ----------------------------------------------------
@@ -896,9 +1134,14 @@ root.protocol("WM_DELETE_WINDOW", on_closing)
 # Начальная загрузка списка шаблонов
 reload_templates_list()
 
+# Фоновая проверка наличия обновлений
+if UPDATE_CHECK_ON_STARTUP:
+    root.after(1500, lambda: check_updates_gui(manual=False))
+
 if __name__ == "__main__":
     print(f"\n=== ЗАПУСК ГЕНЕРАТОРА PRO (Modern UI) ===")
+    print(f"Версия: v{APP_VERSION}")
     print(f"Шаблонов найдено: {len(all_templates)}")
     print(f"Тема: {ctk.get_appearance_mode()}")
     print("=" * 50)
-    root.mainloop()
+    root.mainloop()

@@ -20,3 +20,10 @@ LOG_FILE = os.path.join(LOGS_DIR, 'generator.log')
 # Настройки генерации
 CREATE_SUBFOLDERS_BY_FIO = True   # Создавать подпапки для каждого человека
 CLEAN_TEMP_FILES = True           # Удалять временные .docx после конвертации в PDF
+
+# Информация о приложении и автообновлении
+APP_NAME = "Yahoo"
+APP_VERSION = "1.0.0"
+GITHUB_REPO = "thejuzvr/app-excel"
+GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+UPDATE_CHECK_ON_STARTUP = True
